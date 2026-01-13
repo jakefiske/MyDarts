@@ -3,14 +3,14 @@ module.exports = function(app) {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'http://127.0.0.1:5000',
+      target: 'http://127.0.0.1:5025',
       changeOrigin: true,
     })
   );
   app.use(
     '/gamehub',
     createProxyMiddleware({
-      target: 'http://127.0.0.1:5000',
+      target: 'http://127.0.0.1:5025',
       changeOrigin: true,
       ws: true,
     })

@@ -1,182 +1,101 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../hooks/useThemeContext';
+import { useThrowSource } from '../hooks/useThrowSource';
 
 interface AutodartsBridgeProps {}
 
-enum BridgeStatus {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  ERROR = 'error'
-}
-
-const API_BASE = process.env.REACT_APP_API_URL || '';
-
 export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
   const { theme } = useTheme();
-  const [enabled, setEnabled] = useState(false);
-  const [status, setStatus] = useState<BridgeStatus>(BridgeStatus.DISCONNECTED);
-  const [lastThrow, setLastThrow] = useState<string>('');
   const [logs, setLogs] = useState<string[]>([]);
-  
-  const [dartsCallerUrl, setDartsCallerUrl] = useState(() => 
-    localStorage.getItem('dartscaller_url') || 'https://localhost:8079'
-  );
   const [showSettings, setShowSettings] = useState(false);
-
-  const hubConnectionRef = useRef<HubConnection | null>(null);
+  const [urlInput, setUrlInput] = useState(() => 
+    localStorage.getItem('dartscaller_url') || 'http://192.168.86.25:8079'
+  );
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [`[${timestamp}] ${message}`, ...prev].slice(0, 50));
   }, []);
 
-  const saveSettings = () => {
-    if (!dartsCallerUrl.trim()) {
+  const {
+    status,
+    isLoading,
+    error,
+    configureUrl,
+    activateSource,
+    deactivate
+  } = useThrowSource({
+    onDartDetected: (event) => {
+      addLog(`🎯 Dart ${event.dartNumber}: ${event.segment}`);
+    },
+    onTakeoutDetected: () => {
+      addLog('🔄 Darts pulled');
+    },
+    onStatusChanged: (newStatus, message) => {
+      addLog(`📡 ${newStatus}${message ? `: ${message}` : ''}`);
+    }
+  });
+
+  const isConnected = status?.activeSource?.sourceId === 'autodarts' && 
+                      status?.activeSource?.status === 'Connected';
+  const isConnecting = status?.activeSource?.status === 'Connecting';
+
+  // Log errors
+  useEffect(() => {
+    if (error) {
+      addLog(`❌ ${error}`);
+    }
+  }, [error, addLog]);
+
+  const saveSettings = async () => {
+    if (!urlInput.trim()) {
       addLog('❌ URL is required');
       return;
     }
-    localStorage.setItem('dartscaller_url', dartsCallerUrl);
-    setShowSettings(false);
-    addLog('✅ Settings saved');
-  };
-
-  // Setup SignalR connection to listen for darts-caller events from backend
-  useEffect(() => {
-    const hubUrl = `${API_BASE}/gamehub`;
     
-    const connection = new HubConnectionBuilder()
-      .withUrl(hubUrl)
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Warning)
-      .build();
-
-    // Listen for throw events from darts-caller (via backend)
-    connection.on('DartsCallerThrow', (data: any) => {
-      const { segment, multiplier } = data;
-      const throwStr = formatThrow(segment, multiplier);
-      setLastThrow(throwStr);
-      addLog(`🎯 Throw: ${throwStr}`);
-    });
-
-    // Listen for status updates
-    connection.on('DartsCallerStatus', (data: any) => {
-      const { status: newStatus, message } = data;
-      addLog(`📡 Status: ${newStatus}${message ? ` - ${message}` : ''}`);
-      
-      if (newStatus === 'connected') {
-        setStatus(BridgeStatus.CONNECTED);
-      } else if (newStatus === 'disconnected') {
-        setStatus(BridgeStatus.DISCONNECTED);
-      } else if (newStatus === 'error') {
-        setStatus(BridgeStatus.ERROR);
-      }
-    });
-
-    // Listen for raw events (for debugging)
-    connection.on('DartsCallerEvent', (data: any) => {
-      console.log('DartsCallerEvent:', data);
-    });
-
-    connection.start()
-      .then(() => {
-        console.log('SignalR connected for darts-caller events');
-      })
-      .catch(err => {
-        console.error('SignalR connection failed:', err);
-      });
-
-    hubConnectionRef.current = connection;
-
-    return () => {
-      connection.stop();
-    };
-  }, [addLog]);
-
-  const formatThrow = (segment: string, multiplier: number): string => {
-    if (segment === '25') {
-      return multiplier === 2 ? 'DB' : 'SB';
-    }
-    if (segment === '0' || segment === 'MISS') {
-      return 'MISS';
-    }
-    const prefix = multiplier === 3 ? 'T' : multiplier === 2 ? 'D' : 'S';
-    return `${prefix}${segment}`;
-  };
-
-  const connectToBackend = async () => {
     try {
-      addLog('🔌 Connecting via backend...');
-      setStatus(BridgeStatus.CONNECTING);
-
-      const response = await fetch(`${API_BASE}/api/dartscaller/connect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: dartsCallerUrl })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Connection failed');
-      }
-
-      addLog('✅ Connected to darts-caller');
-      setStatus(BridgeStatus.CONNECTED);
-    } catch (error: any) {
-      addLog(`❌ Error: ${error.message}`);
-      setStatus(BridgeStatus.ERROR);
-    }
-  };
-
-  const disconnectFromBackend = async () => {
-    try {
-      await fetch(`${API_BASE}/api/dartscaller/disconnect`, {
-        method: 'POST'
-      });
-      addLog('👋 Disconnected');
-      setStatus(BridgeStatus.DISCONNECTED);
-    } catch (error: any) {
-      addLog(`❌ Error: ${error.message}`);
+      localStorage.setItem('dartscaller_url', urlInput);
+      await configureUrl(urlInput);
+      setShowSettings(false);
+      addLog('✅ Settings saved');
+    } catch {
+      // Error handled by hook
     }
   };
 
   const toggleBridge = async () => {
-    if (enabled) {
-      await disconnectFromBackend();
-      setEnabled(false);
+    if (isConnected) {
+      await deactivate();
+      addLog('👋 Disconnected');
     } else {
-      setEnabled(true);
-      await connectToBackend();
+      // Configure URL first if needed
+      const savedUrl = localStorage.getItem('dartscaller_url');
+      if (savedUrl && savedUrl !== status?.dartsCallerUrl) {
+        await configureUrl(savedUrl);
+      }
+      
+      try {
+        addLog('🔌 Connecting...');
+        await activateSource('autodarts');
+        addLog('✅ Connected');
+      } catch {
+        // Error handled by hook
+      }
     }
   };
 
-  // Check initial status on mount
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/dartscaller/status`);
-        const data = await response.json();
-        
-        if (data.connected) {
-          setEnabled(true);
-          setStatus(BridgeStatus.CONNECTED);
-          addLog('✅ Already connected to darts-caller');
-        }
-      } catch (error) {
-        // Backend not reachable, that's fine
-      }
-    };
-    
-    checkStatus();
-  }, [addLog]);
+  const getStatusDisplay = () => {
+    if (isConnecting || isLoading) return '🔄 Connecting...';
+    if (isConnected) return '✅ Connected';
+    if (error) return '❌ Error';
+    return '⚪ Disconnected';
+  };
 
   return (
     <div className="p-4 rounded-xl" 
          style={{ 
-           background: enabled ? `${theme.stateColors.active.color}22` : theme.backgrounds.cardHex,
-           border: `2px solid ${enabled ? theme.stateColors.active.border : theme.borders.primary}` 
+           background: isConnected ? `${theme.stateColors.active.color}22` : theme.backgrounds.cardHex,
+           border: `2px solid ${isConnected ? theme.stateColors.active.border : theme.borders.primary}` 
          }}>
       
       <div className="flex items-center justify-between mb-3">
@@ -185,11 +104,10 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
             📷 Darts-Caller Bridge
           </div>
           <div className="text-xs mt-1" style={{ color: theme.text.secondary }}>
-            {status === BridgeStatus.CONNECTED ? '✅ Connected (via backend)' : 
-             status === BridgeStatus.CONNECTING ? '🔄 Connecting...' : 
-             status === BridgeStatus.ERROR ? '❌ Error' : 
-             '⚪ Disconnected'}
-            {lastThrow && ` • Last: ${lastThrow}`}
+            {getStatusDisplay()}
+            {status?.dartsCallerUrl && (
+              <span className="ml-2 opacity-60">• {status.dartsCallerUrl}</span>
+            )}
           </div>
         </div>
         
@@ -208,15 +126,16 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
           
           <button
             onClick={toggleBridge}
-            className="relative w-14 h-8 rounded-full transition-all"
+            disabled={isLoading || isConnecting}
+            className="relative w-14 h-8 rounded-full transition-all disabled:opacity-50"
             style={{ 
-              background: enabled ? theme.stateColors.active.color : theme.backgrounds.baseHex,
+              background: isConnected ? theme.stateColors.active.color : theme.backgrounds.baseHex,
             }}
-            title={enabled ? 'Disable cameras' : 'Enable cameras'}
+            title={isConnected ? 'Disable cameras' : 'Enable cameras'}
           >
             <div
               className="absolute top-1 w-6 h-6 rounded-full bg-white transition-all"
-              style={{ left: enabled ? '30px' : '4px' }}
+              style={{ left: isConnected ? '30px' : '4px' }}
             />
           </button>
         </div>
@@ -231,9 +150,9 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
             </label>
             <input
               type="text"
-              value={dartsCallerUrl}
-              onChange={(e) => setDartsCallerUrl(e.target.value)}
-              placeholder="https://localhost:8079"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="http://192.168.86.25:8079"
               className="w-full px-3 py-2 rounded text-sm font-mono"
               style={{ 
                 background: theme.backgrounds.cardHex,
@@ -242,13 +161,14 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
               }}
             />
             <div className="text-xs mt-1" style={{ color: theme.text.muted }}>
-              Backend connects to darts-caller (bypasses browser SSL issues)
+              URL of darts-caller running on your Pi (or localhost for testing)
             </div>
           </div>
 
           <button
             onClick={saveSettings}
-            className="w-full py-2 rounded-lg font-bold text-sm"
+            disabled={isLoading}
+            className="w-full py-2 rounded-lg font-bold text-sm disabled:opacity-50"
             style={{ 
               background: theme.stateColors.active.color,
               color: theme.backgrounds.baseHex 
