@@ -14,10 +14,14 @@ namespace MyDarts.Api.Controllers
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
 
-        private static readonly string DataDir = Path.Combine(AppContext.BaseDirectory, "data");
-        private static readonly string TokensFile = Path.Combine(DataDir, "spotify_tokens.json");
-        private static readonly string PreferredDeviceFile = Path.Combine(DataDir, "spotify_preferred_device.json");
-        private static readonly string ConfigFile = Path.Combine(DataDir, "spotify_config.json");
+        private static readonly string ConfigDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".config",
+            "mydarts"
+        );
+        private static readonly string TokensFile = Path.Combine(ConfigDir, "spotify_tokens.json");
+        private static readonly string PreferredDeviceFile = Path.Combine(ConfigDir, "spotify_preferred_device.json");
+        private static readonly string ConfigFile = Path.Combine(ConfigDir, "spotify_config.json");
 
         // Static token storage (in production, use a proper cache/store)
         private static SpotifyTokens? _tokens;
@@ -32,7 +36,7 @@ namespace MyDarts.Api.Controllers
             _logger = logger;
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
-            Directory.CreateDirectory(DataDir);
+            Directory.CreateDirectory(ConfigDir);
 
             // Load config and tokens on first access
             if (_config == null)
