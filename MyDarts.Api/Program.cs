@@ -18,6 +18,9 @@ builder.Services.AddSwaggerGen();
 // SignalR
 builder.Services.AddSignalR();
 
+// HttpClient for external API calls (Spotify, etc.)
+builder.Services.AddHttpClient();
+
 // Database
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite("Data Source=mydarts.db"));
