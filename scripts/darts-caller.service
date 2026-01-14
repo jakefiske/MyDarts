@@ -1,0 +1,16 @@
+[Unit]
+Description=Darts-caller - Autodarts Bridge
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi
+ExecStart=/home/pi/.local/bin/darts-caller
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

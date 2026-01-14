@@ -47,6 +47,29 @@ sudo systemctl enable mydarts.service
 sudo systemctl start mydarts.service
 echo "Service installed and enabled for user: $CURRENT_USER"
 
+# Install darts-caller service (if darts-caller is installed)
+if [ -f "$HOME/.local/bin/darts-caller" ]; then
+    echo ""
+    echo "=== Installing darts-caller service ==="
+    sed -e "s|User=pi|User=$CURRENT_USER|g" \
+        -e "s|/home/pi|$HOME|g" \
+        "$SCRIPT_DIR/darts-caller.service" | sudo tee /etc/systemd/system/darts-caller.service > /dev/null
+    
+    sudo systemctl daemon-reload
+    sudo systemctl enable darts-caller.service
+    sudo systemctl start darts-caller.service
+    echo "Darts-caller service installed and started"
+else
+    echo ""
+    echo "=== Darts-caller not found ==="
+    echo "Darts-caller not installed at $HOME/.local/bin/darts-caller"
+    echo "Skipping darts-caller service installation"
+    echo ""
+    echo "To install darts-caller:"
+    echo "  npm install -g darts-caller"
+    echo "Then re-run: ./scripts/setup-pi.sh"
+fi
+
 echo ""
 echo "=== Setup Complete ==="
 echo ""
