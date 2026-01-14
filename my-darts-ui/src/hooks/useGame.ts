@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { playThrowSound, playGameStartSound } from './useGameSounds';
 import { useApi, GameOptions } from './useApi';
 import { useSignalR } from './useSignalR';
+import { useThrowSource } from './useThrowSource';
 
 export interface PlayerResponse {
   id: string;
@@ -56,6 +57,7 @@ export interface GameResponse {
 
 export function useGame(enableRealtime: boolean = true) {
   const api = useApi();
+  const { activateSource, bindToGame, unbind } = useThrowSource();
   
   const [game, setGame] = useState<GameResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -118,6 +120,15 @@ export function useGame(enableRealtime: boolean = true) {
       setEditingThrowIndex(null);
       setPlayerTotalThrows({});
       playGameStartSound();
+      
+      // Auto-activate autodarts and bind to game
+      try {
+        await activateSource('autodarts');
+        await bindToGame(data.gameId);
+        console.log('Autodarts bound to game:', data.gameId);
+      } catch (err) {
+        console.log('Autodarts not available, using manual input');
+      }
     } finally {
       setLoading(false);
     }
@@ -213,6 +224,9 @@ export function useGame(enableRealtime: boolean = true) {
     setGame(null);
     setEditingThrowIndex(null);
     setPlayerTotalThrows({});
+    
+    // Unbind throw source
+    unbind().catch(() => {});
   };
 
   return {
