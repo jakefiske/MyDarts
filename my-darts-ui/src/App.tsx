@@ -11,6 +11,7 @@ import { ThemeSelector } from './components/ui/ThemeSelector';
 import { DartboardControls } from './components/game/controls/DartboardControls';
 import { useGame } from './hooks/useGame';
 import { ThemeProvider, useTheme } from './hooks/useThemeContext';
+import { FullscreenButton } from './components/ui/FullscreenButton';
 
 // Game type enum
 enum GameType {
@@ -461,6 +462,9 @@ function AppContent() {
         />
       )}
       {showSoundSettings && <SoundSettings onClose={() => setShowSoundSettings(false)} />}
+
+      {/* Fullscreen Toggle */}
+      <FullscreenButton />
     </AppShell>
   );
 }

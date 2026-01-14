@@ -25,6 +25,14 @@ echo "=== Building MyDarts ==="
 cd "$PROJECT_DIR/MyDarts.Api"
 dotnet build --configuration Release
 
+# Build frontend
+echo "Building frontend..."
+cd "$PROJECT_DIR/my-darts-ui"
+npm install
+npm run build
+mkdir -p "$PROJECT_DIR/MyDarts.Api/wwwroot"
+cp -r build/* "$PROJECT_DIR/MyDarts.Api/wwwroot/"
+
 # Install systemd service with correct user
 echo ""
 echo "=== Installing systemd service ==="
@@ -36,30 +44,19 @@ sed -e "s|User=pi|User=$CURRENT_USER|g" \
 
 sudo systemctl daemon-reload
 sudo systemctl enable mydarts.service
+sudo systemctl start mydarts.service
 echo "Service installed and enabled for user: $CURRENT_USER"
-
-# Make kiosk script executable
-chmod +x "$SCRIPT_DIR/kiosk.sh"
-
-# Setup autostart for kiosk (LXDE)
-echo ""
-echo "=== Setting up kiosk autostart ==="
-mkdir -p ~/.config/lxsession/LXDE-pi
-cat > ~/.config/lxsession/LXDE-pi/autostart << EOF
-@lxpanel --profile LXDE-pi
-@pcmanfm --desktop --profile LXDE-pi
-@$SCRIPT_DIR/kiosk.sh
-EOF
 
 echo ""
 echo "=== Setup Complete ==="
 echo ""
+echo "MyDarts API is now running on http://localhost:5025"
+echo ""
 echo "Commands:"
-echo "  Start API now:     sudo systemctl start mydarts"
-echo "  Stop API:          sudo systemctl stop mydarts"
 echo "  View logs:         journalctl -u mydarts -f"
 echo "  Restart:           sudo systemctl restart mydarts"
+echo "  Stop:              sudo systemctl stop mydarts"
 echo ""
-echo "Reboot to start in kiosk mode, or run:"
-echo "  sudo systemctl start mydarts && $SCRIPT_DIR/kiosk.sh"
+echo "Open Chromium and navigate to http://localhost:5025"
+echo "Use the fullscreen button in the app to enter/exit kiosk mode"
 echo ""

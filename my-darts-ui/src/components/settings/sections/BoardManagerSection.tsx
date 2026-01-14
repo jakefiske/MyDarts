@@ -1,13 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../../hooks/useThemeContext';
 import { Modal } from '../../ui/Modal';
 
 export const BoardManagerSection: React.FC = () => {
   const { theme } = useTheme();
   const [boardManagerUrl, setBoardManagerUrl] = useState(() => {
-    return localStorage.getItem('boardManagerUrl') || 'http://192.168.86.250:3180';
+    return localStorage.getItem('boardManagerUrl') || 'http://localhost:3180';
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Auto-detect IP on load
+  useEffect(() => {
+    const savedUrl = localStorage.getItem('boardManagerUrl');
+    if (!savedUrl || savedUrl === 'http://localhost:3180') {
+      // Fetch current IP from system status
+      fetch('/api/system/status')
+        .then(r => r.json())
+        .then(data => {
+          const ip = data.ipAddresses?.[0];
+          if (ip) {
+            const autoUrl = `http://${ip}:3180`;
+            setBoardManagerUrl(autoUrl);
+            localStorage.setItem('boardManagerUrl', autoUrl);
+          }
+        })
+        .catch(err => console.error('Failed to auto-detect IP:', err));
+    }
+  }, []);
 
   const handleSaveUrl = () => {
     localStorage.setItem('boardManagerUrl', boardManagerUrl);
@@ -66,7 +85,7 @@ export const BoardManagerSection: React.FC = () => {
             </button>
           </div>
           <p className="text-xs mt-2" style={{ color: theme.text.muted }}>
-            The IP address where your Autodarts board manager is running
+            Auto-detected from system IP. Edit if needed.
           </p>
         </div>
       </div>
