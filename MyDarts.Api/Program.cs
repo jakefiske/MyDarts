@@ -22,8 +22,15 @@ builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
 
 // Database
+var dataDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "mydarts"
+);
+Directory.CreateDirectory(dataDir);
+var dbPath = Path.Combine(dataDir, "mydarts.db");
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=mydarts.db"));
+    options.UseSqlite($"Data Source={dbPath}"));
 
 // Game Engines - register all engines
 builder.Services.AddSingleton<IGameEngine, AroundTheClockTurboEngine>();
