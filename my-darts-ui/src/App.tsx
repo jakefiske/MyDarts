@@ -5,7 +5,7 @@ import GameBoard from './components/game/boards/GameBoard';
 import { X01GameBoardPro } from './components/game/boards/X01GameboardPro';
 import { AroundTheClockGameBoardPro } from './components/game/boards/AroundTheClockGameboardPro';
 import StatsPage from './components/StatsPage';
-import SettingsPage from './components/SettingsPage';
+import SettingsPage from './components/settings/SettingsPage';
 import SoundSettings from './components/SoundSettings';
 import { ThemeSelector } from './components/ui/ThemeSelector';
 import { DartboardControls } from './components/game/controls/DartboardControls';
