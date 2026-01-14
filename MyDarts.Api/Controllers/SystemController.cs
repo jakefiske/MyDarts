@@ -56,6 +56,199 @@ namespace MyDarts.Api.Controllers
         }
 
         /// <summary>
+        /// Get status of all services
+        /// </summary>
+        [HttpGet("services")]
+        public IActionResult GetServiceStatuses()
+        {
+            var statuses = new
+            {
+                autodarts = IsServiceRunning("autodarts"),
+                dartsCaller = IsServiceRunning("darts-caller")
+            };
+            return Ok(statuses);
+        }
+
+        /// <summary>
+        /// Control a service (start/stop/restart)
+        /// </summary>
+        [HttpPost("service/{serviceName}/{action}")]
+        public async Task<IActionResult> ServiceAction(string serviceName, string action)
+        {
+            try
+            {
+                var validServices = new[] { "autodarts", "darts-caller", "mydarts" };
+                if (!validServices.Contains(serviceName))
+                {
+                    return BadRequest(new { success = false, message = "Invalid service name" });
+                }
+
+                var validActions = new[] { "start", "stop", "restart" };
+                if (!validActions.Contains(action))
+                {
+                    return BadRequest(new { success = false, message = "Invalid action" });
+                }
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "sudo",
+                    Arguments = $"systemctl {action} {serviceName}",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                {
+                    return Ok(new { success = false, message = "Failed to execute command" });
+                }
+
+                await process.WaitForExitAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+
+                if (process.ExitCode == 0)
+                {
+                    return Ok(new { success = true, message = $"{serviceName} {action} completed" });
+                }
+                else
+                {
+                    return Ok(new { success = false, message = error });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Service action failed");
+                return Ok(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get service logs
+        /// </summary>
+        [HttpGet("service-logs")]
+        public async Task<IActionResult> GetServiceLogs([FromQuery] string service)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "journalctl",
+                    Arguments = $"-u {service} -n 100 --no-pager",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                {
+                    return Content("Failed to get logs", "text/plain");
+                }
+
+                var output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                return Content(output, "text/plain");
+            }
+            catch (Exception ex)
+            {
+                return Content($"Error: {ex.Message}", "text/plain");
+            }
+        }
+
+        /// <summary>
+        /// Run the Pi setup script
+        /// </summary>
+        [HttpPost("setup")]
+        public async Task<IActionResult> RunSetup()
+        {
+            try
+            {
+                var scriptPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "MyDarts",
+                    "scripts",
+                    "setup-pi.sh"
+                );
+
+                if (!System.IO.File.Exists(scriptPath))
+                {
+                    return Ok(new { success = false, message = "Setup script not found at " + scriptPath });
+                }
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "/bin/bash",
+                    Arguments = scriptPath,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(scriptPath)
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                {
+                    return Ok(new { success = false, message = "Failed to start setup script" });
+                }
+
+                await process.WaitForExitAsync();
+                var output = await process.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+
+                _logger.LogInformation("Setup script output: {Output}", output);
+                if (!string.IsNullOrEmpty(error))
+                {
+                    _logger.LogWarning("Setup script errors: {Error}", error);
+                }
+
+                if (process.ExitCode == 0)
+                {
+                    return Ok(new { success = true, message = "Setup completed successfully", output });
+                }
+                else
+                {
+                    return Ok(new { success = false, message = $"Setup failed with exit code {process.ExitCode}: {error}" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Setup script execution failed");
+                return Ok(new { success = false, message = ex.Message });
+            }
+        }
+
+        private bool IsServiceRunning(string serviceName)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "systemctl",
+                    Arguments = $"is-active {serviceName}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null) return false;
+
+                var output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+
+                return output == "active";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Get system status (network, hostname, etc.)
         /// </summary>
         [HttpGet("status")]

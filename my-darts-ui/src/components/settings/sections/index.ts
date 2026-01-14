@@ -5,7 +5,7 @@ export { SoundSection } from './SoundSection';
 export { CamerasSection } from './CamerasSection';
 export { AutodartsSection } from './AutodartsSection';
 export { BoardManagerSection } from './BoardManagerSection';
-export { SystemSection } from './SystemSection';
+export { default as SystemSection } from './system/SystemSection';
 export { BluetoothSection } from './BluetoothSection';
 export { SpotifySection } from './SpotifySection';
 export { DataSection } from './DataSection';
