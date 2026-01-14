@@ -12,13 +12,14 @@ import {
   BluetoothSection,
   SpotifySection,
   DataSection,
+  HealthCheckSection,
 } from './sections';
 
 interface SettingsPageProps {
   onBack: () => void;
 }
 
-type Section = 'players' | 'game' | 'theme' | 'sound' | 'cameras' | 'autodarts' | 'boardmanager' | 'system' | 'bluetooth' | 'spotify' | 'data';
+type Section = 'health' | 'players' | 'game' | 'theme' | 'sound' | 'cameras' | 'autodarts' | 'boardmanager' | 'system' | 'bluetooth' | 'spotify' | 'data';
 
 interface SettingsGroup {
   id: string;
@@ -28,10 +29,17 @@ interface SettingsGroup {
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
   const { theme } = useTheme();
-  const [activeSection, setActiveSection] = useState<Section>('players');
+  const [activeSection, setActiveSection] = useState<Section>('health');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const groups: SettingsGroup[] = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      sections: [
+        { id: 'health', label: 'Health Check', icon: '🏥' },
+      ]
+    },
     {
       id: 'game',
       label: 'Game',
@@ -81,6 +89,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
 
   const renderSection = () => {
     switch (activeSection) {
+      case 'health': return <HealthCheckSection />;
       case 'players': return <PlayersSection />;
       case 'game': return <GameDefaultsSection />;
       case 'theme': return <ThemeSection />;

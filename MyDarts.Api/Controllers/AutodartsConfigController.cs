@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -10,11 +11,15 @@ namespace MyDarts.Api.Controllers;
 public class AutodartsConfigController : ControllerBase
 {
     private readonly ILogger<AutodartsConfigController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _configPath;
 
-    public AutodartsConfigController(ILogger<AutodartsConfigController> logger)
+    public AutodartsConfigController(
+        ILogger<AutodartsConfigController> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
         // Config file path: ~/.config/autodarts/config.toml
         var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _configPath = Path.Combine(homeDir, ".config", "autodarts", "config.toml");
@@ -79,6 +84,36 @@ public class AutodartsConfigController : ControllerBase
         }
     }
 
+    [HttpPost("test")]
+    public async Task<IActionResult> TestConnection([FromBody] AutodartsCredentialsRequest request)
+    {
+        try
+        {
+            using var httpClient = _httpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {request.ApiKey}");
+
+            var response = await httpClient.GetAsync($"https://api.autodarts.io/bs/v0/boards/{request.BoardId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var board = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(content);
+                var boardName = board.TryGetProperty("name", out var name) ? name.GetString() : "Unknown";
+
+                return Ok(new { success = true, boardName });
+            }
+            else
+            {
+                return Ok(new { success = false, message = $"API returned {response.StatusCode}" });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Autodarts connection test failed");
+            return Ok(new { success = false, message = ex.Message });
+        }
+    }
+
     private string ExtractValue(string content, string key)
     {
         // Simple TOML parser for board_id and api_key
@@ -103,16 +138,16 @@ public class AutodartsConfigController : ControllerBase
         {
             // Create new config
             return $@"[auth]
-board_id = '{boardId}'
-api_key = '{apiKey}'
+                board_id = '{boardId}'
+                api_key = '{apiKey}'
 
-[cam]
-cams = ['/dev/video0', '/dev/video2', '/dev/video4']
-width = 1280
-height = 720
-fps = 30
-rotate_180 = []
-";
+                [cam]
+                cams = ['/dev/video0', '/dev/video2', '/dev/video4']
+                width = 1280
+                height = 720
+                fps = 30
+                rotate_180 = []
+                ";
         }
 
         // Update existing config

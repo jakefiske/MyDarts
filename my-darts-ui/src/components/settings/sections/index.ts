@@ -7,5 +7,6 @@ export { AutodartsSection } from './AutodartsSection';
 export { BoardManagerSection } from './BoardManagerSection';
 export { default as SystemSection } from './system/SystemSection';
 export { BluetoothSection } from './BluetoothSection';
-export { SpotifySection } from './SpotifySection';
+export { SpotifySection } from './spotify/SpotifySection';
 export { DataSection } from './DataSection';
+export { HealthCheckSection } from './HealthCheckSection';

@@ -21,7 +21,7 @@ namespace MyDarts.Api.Controllers
         );
         private static readonly string TokensFile = Path.Combine(ConfigDir, "spotify_tokens.json");
         private static readonly string PreferredDeviceFile = Path.Combine(ConfigDir, "spotify_preferred_device.json");
-        private static readonly string ConfigFile = Path.Combine(ConfigDir, "spotify_config.json");
+        private static readonly string ConfigFile = Path.Combine(ConfigDir, "spotify.json");
 
         // Static token storage (in production, use a proper cache/store)
         private static SpotifyTokens? _tokens;
@@ -51,7 +51,7 @@ namespace MyDarts.Api.Controllers
 
         private string ClientId => _config?.ClientId ?? _configuration["Spotify:ClientId"] ?? "";
         private string ClientSecret => _config?.ClientSecret ?? _configuration["Spotify:ClientSecret"] ?? "";
-        private string RedirectUri => _configuration["Spotify:RedirectUri"] ?? "http://localhost:5025/api/spotify/callback";
+        private string RedirectUri => _configuration["Spotify:RedirectUri"] ?? "http://127.0.0.1:5025/api/spotify/callback";
 
         private void LoadConfig()
         {
@@ -284,7 +284,8 @@ namespace MyDarts.Api.Controllers
                         SaveTokens();
 
                         // Redirect to frontend
-                        return Redirect("/settings?spotify=success");
+                        var frontendUrl = _configuration["Frontend:Url"] ?? "http://localhost:3000";
+                        return Redirect($"{frontendUrl}/settings?spotify=success");
                     }
                 }
 
@@ -438,6 +439,32 @@ namespace MyDarts.Api.Controllers
         }
 
         /// <summary>
+        /// Set volume
+        /// </summary>
+        [HttpPost("volume")]
+        public async Task<IActionResult> SetVolume([FromBody] VolumeRequest request)
+        {
+            if (!await EnsureValidToken())
+                return Unauthorized(new { error = "Not authenticated" });
+
+            if (request.Volume < 0 || request.Volume > 100)
+                return BadRequest(new { error = "Volume must be between 0 and 100" });
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _tokens!.AccessToken);
+
+                var response = await client.PutAsync($"https://api.spotify.com/v1/me/player/volume?volume_percent={request.Volume}", null);
+                return Ok(new { success = response.IsSuccessStatusCode });
+            }
+            catch (Exception ex)
+            {
+                return Ok(new { success = false, error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Get available devices
         /// </summary>
         [HttpGet("devices")]
@@ -572,5 +599,10 @@ namespace MyDarts.Api.Controllers
     {
         public string? ClientId { get; set; }
         public string? ClientSecret { get; set; }
+    }
+
+    public class VolumeRequest
+    {
+        public int Volume { get; set; }
     }
 }

@@ -221,6 +221,122 @@ namespace MyDarts.Api.Controllers
             }
         }
 
+        /// <summary>
+        /// Get overall system health status
+        /// </summary>
+        [HttpGet("health")]
+        public async Task<IActionResult> GetHealthStatus()
+        {
+            try
+            {
+                // Check database
+                bool databaseHealthy = false;
+                try
+                {
+                    var dbPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "mydarts",
+                        "mydarts.db"
+                    );
+                    databaseHealthy = System.IO.File.Exists(dbPath);
+                }
+                catch { }
+
+                // Check Autodarts config
+                bool autodartsConfigured = false;
+                try
+                {
+                    var autodartsConfigPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        ".config",
+                        "autodarts",
+                        "config.toml"
+                    );
+                    if (System.IO.File.Exists(autodartsConfigPath))
+                    {
+                        var content = await System.IO.File.ReadAllTextAsync(autodartsConfigPath);
+                        autodartsConfigured = content.Contains("board_id = '") && content.Contains("api_key = '");
+                    }
+                }
+                catch { }
+
+                // Check Spotify config
+                bool spotifyConfigured = false;
+                bool spotifyAuthenticated = false;
+                try
+                {
+                    var spotifyConfigPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        ".config",
+                        "mydarts",
+                        "spotify.json"
+                    );
+                    if (System.IO.File.Exists(spotifyConfigPath))
+                    {
+                        var content = await System.IO.File.ReadAllTextAsync(spotifyConfigPath);
+                        spotifyConfigured = content.Contains("ClientId") && content.Length > 50;
+                    }
+
+                    // Check if Spotify is authenticated (has tokens)
+                    var spotifyTokensPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        ".config",
+                        "mydarts",
+                        "spotify_tokens.json"
+                    );
+                    spotifyAuthenticated = System.IO.File.Exists(spotifyTokensPath);
+                }
+                catch { }
+
+                // Check darts-caller connection
+                bool dartsCallerConnected = false;
+                try
+                {
+                    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                    var response = await httpClient.GetAsync("http://localhost:8079");
+                    dartsCallerConnected = response.IsSuccessStatusCode;
+                }
+                catch { }
+
+                var health = new
+                {
+                    database = databaseHealthy,
+                    autodartsConfigured,
+                    autodartsConnected = IsServiceRunning("autodarts"),
+                    spotifyConfigured,
+                    spotifyAuthenticated,
+                    dartsCallerConnected,
+                    servicesRunning = new
+                    {
+                        mydarts = true, // If this endpoint is responding, mydarts is running
+                        autodarts = IsServiceRunning("autodarts"),
+                        dartsCaller = IsServiceRunning("darts-caller")
+                    }
+                };
+
+                return Ok(health);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Health check failed");
+                return Ok(new
+                {
+                    database = false,
+                    autodartsConfigured = false,
+                    autodartsConnected = false,
+                    spotifyConfigured = false,
+                    spotifyAuthenticated = false,
+                    dartsCallerConnected = false,
+                    servicesRunning = new
+                    {
+                        mydarts = true,
+                        autodarts = false,
+                        dartsCaller = false
+                    }
+                });
+            }
+        }
+
         private bool IsServiceRunning(string serviceName)
         {
             try
