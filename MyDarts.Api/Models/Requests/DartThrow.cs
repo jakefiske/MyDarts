@@ -25,14 +25,12 @@ namespace MyDarts.Api.Models.Requests
             if (Value == 25) return "SB";
             if (Value == 50) return "DB";
 
-            // Calculate base number from value and multiplier
-            var baseNumber = Multiplier > 0 ? Value / Multiplier : Value;
-
+            // Value is the segment number (1-20), not total points
             return Multiplier switch
             {
-                3 => $"T{baseNumber}",
-                2 => $"D{baseNumber}",
-                _ => $"{baseNumber}"
+                3 => $"T{Value}",
+                2 => $"D{Value}",
+                _ => $"S{Value}"
             };
         }
     }
