@@ -11,10 +11,18 @@ interface SystemStatus {
   wifi?: { ssid?: string; signal?: string };
 }
 
+interface VersionInfo {
+  commit: string;
+  date: string;
+  branch: string;
+}
+
 export const SystemSection: React.FC = () => {
   const { theme } = useTheme();
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -26,9 +34,20 @@ export const SystemSection: React.FC = () => {
     }
   }, []);
 
+  const fetchVersion = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/version');
+      const data = await res.json();
+      setVersion(data);
+    } catch (err) {
+      console.error('Failed to fetch version:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
-  }, [fetchStatus]);
+    fetchVersion();
+  }, [fetchStatus, fetchVersion]);
 
   const handleReboot = async () => {
     if (!window.confirm('Reboot now?')) return;
@@ -57,6 +76,24 @@ export const SystemSection: React.FC = () => {
         setSystemStatus(prev => prev ? { ...prev, orientation } : null);
       }
     } catch (err) {}
+    setLoading(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!window.confirm('Pull latest from GitHub and restart?')) return;
+    setLoading(true);
+    setUpdateStatus('Updating...');
+    try {
+      const res = await fetch('/api/system/update', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setUpdateStatus('Update complete! Restarting...');
+      } else {
+        setUpdateStatus(`Failed: ${data.message}`);
+      }
+    } catch (err) {
+      setUpdateStatus('Update failed');
+    }
     setLoading(false);
   };
 
@@ -96,6 +133,32 @@ export const SystemSection: React.FC = () => {
           </div>
         ) : (
           <div style={{ color: theme.text.muted }}>Loading...</div>
+        )}
+      </div>
+
+      {/* Version & Update */}
+      <div className="p-4 rounded-lg" style={{ background: theme.backgrounds.cardHex }}>
+        <h3 className="font-bold mb-3" style={{ color: theme.text.primary }}>Software</h3>
+        {version && (
+          <div className="text-sm mb-3" style={{ color: theme.text.muted }}>
+            <span>Version: </span>
+            <span style={{ color: theme.text.primary }}>{version.commit}</span>
+            <span className="mx-2">•</span>
+            <span>{version.branch}</span>
+            <span className="mx-2">•</span>
+            <span>{version.date}</span>
+          </div>
+        )}
+        <button
+          onClick={handleUpdate}
+          disabled={loading}
+          className="w-full py-3 rounded-lg font-bold"
+          style={{ background: theme.stateColors.active.color, color: theme.backgrounds.baseHex, opacity: loading ? 0.5 : 1 }}
+        >
+          {loading ? '⏳ Updating...' : '⬇️ Update from GitHub'}
+        </button>
+        {updateStatus && (
+          <div className="mt-2 text-sm" style={{ color: theme.text.muted }}>{updateStatus}</div>
         )}
       </div>
 

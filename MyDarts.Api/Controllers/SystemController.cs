@@ -292,5 +292,73 @@ namespace MyDarts.Api.Controllers
             var (success, _, _) = RunCommand("pkill", "-f chromium.*kiosk");
             return Ok(new { success = true, message = "Kiosk closed" });
         }
+
+        /// <summary>
+        /// Update app from git and restart
+        /// </summary>
+        [HttpPost("update")]
+        public async Task<IActionResult> Update()
+        {
+            var projectDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".."));
+
+            if (!IsLinux)
+            {
+                return Ok(new { success = false, message = "Update only available on Pi", projectDir });
+            }
+
+            try
+            {
+                // Git pull
+                _logger.LogInformation("Pulling latest from git...");
+                var (pullSuccess, pullOutput, pullError) = RunCommand("git", $"-C {projectDir} pull", 30000);
+                if (!pullSuccess)
+                {
+                    return Ok(new { success = false, stage = "git pull", message = pullError, output = pullOutput });
+                }
+
+                // Build
+                _logger.LogInformation("Building...");
+                var (buildSuccess, buildOutput, buildError) = RunCommand("dotnet", $"build {projectDir} --configuration Release", 120000);
+                if (!buildSuccess)
+                {
+                    return Ok(new { success = false, stage = "build", message = buildError, output = buildOutput });
+                }
+
+                // Schedule restart (give time for response to be sent)
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    RunCommand("sudo", "systemctl restart mydarts");
+                });
+
+                return Ok(new { success = true, message = "Update complete. Restarting...", pullOutput, buildOutput });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Update failed");
+                return Ok(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get current app version (git info)
+        /// </summary>
+        [HttpGet("version")]
+        public IActionResult GetVersion()
+        {
+            var projectDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".."));
+
+            var (commitSuccess, commitHash, _) = RunCommand("git", $"-C {projectDir} rev-parse --short HEAD", 5000);
+            var (dateSuccess, commitDate, _) = RunCommand("git", $"-C {projectDir} log -1 --format=%ci", 5000);
+            var (branchSuccess, branch, _) = RunCommand("git", $"-C {projectDir} branch --show-current", 5000);
+
+            return Ok(new
+            {
+                commit = commitSuccess ? commitHash.Trim() : "unknown",
+                date = dateSuccess ? commitDate.Trim() : "unknown",
+                branch = branchSuccess ? branch.Trim() : "unknown",
+                projectDir
+            });
+        }
     }
 }
