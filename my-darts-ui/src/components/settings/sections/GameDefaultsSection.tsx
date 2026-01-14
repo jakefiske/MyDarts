@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../../hooks/useThemeContext';
 import { PlayerManager, AppSettings } from '../../../utils/PlayerManager';
+import { Toggle } from '../../ui/Toggle';
 
 export const GameDefaultsSection: React.FC = () => {
   const { theme } = useTheme();
@@ -41,18 +42,21 @@ export const GameDefaultsSection: React.FC = () => {
             </div>
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.defaultIncludeDoubles} onChange={(e) => handleSettingChange('defaultIncludeDoubles', e.target.checked)} className="w-5 h-5" />
-            <span style={{ color: theme.text.primary }}>Include Doubles</span>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.defaultIncludeTriples} onChange={(e) => handleSettingChange('defaultIncludeTriples', e.target.checked)} className="w-5 h-5" />
-            <span style={{ color: theme.text.primary }}>Include Triples</span>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.defaultIncludeBeds} onChange={(e) => handleSettingChange('defaultIncludeBeds', e.target.checked)} className="w-5 h-5" />
-            <span style={{ color: theme.text.primary }}>Include Beds</span>
-          </label>
+          <Toggle 
+            checked={settings.defaultIncludeDoubles} 
+            onChange={(checked) => handleSettingChange('defaultIncludeDoubles', checked)} 
+            label="Include Doubles" 
+          />
+          <Toggle 
+            checked={settings.defaultIncludeTriples} 
+            onChange={(checked) => handleSettingChange('defaultIncludeTriples', checked)} 
+            label="Include Triples" 
+          />
+          <Toggle 
+            checked={settings.defaultIncludeBeds} 
+            onChange={(checked) => handleSettingChange('defaultIncludeBeds', checked)} 
+            label="Include Beds" 
+          />
         </div>
       </div>
 
@@ -81,10 +85,11 @@ export const GameDefaultsSection: React.FC = () => {
             </div>
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.defaultDoubleIn} onChange={(e) => handleSettingChange('defaultDoubleIn', e.target.checked)} className="w-5 h-5" />
-            <span style={{ color: theme.text.primary }}>Double In</span>
-          </label>
+          <Toggle 
+            checked={settings.defaultDoubleIn} 
+            onChange={(checked) => handleSettingChange('defaultDoubleIn', checked)} 
+            label="Double In" 
+          />
         </div>
       </div>
     </div>

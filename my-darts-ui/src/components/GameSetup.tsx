@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useTheme } from '../hooks/useThemeContext';
 import { PlayerManager, SavedPlayer } from '../utils/PlayerManager';
+import { Toggle } from './ui/Toggle';
 
 interface GameTypeInfo {
   gameType: number;
@@ -353,15 +354,11 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, loading, onOpenSetti
                 </div>
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={doubleIn}
-                  onChange={(e) => setDoubleIn(e.target.checked)}
-                  className="w-5 h-5"
-                />
-                <span style={{ color: theme.text.primary }}>Double In Required</span>
-              </label>
+              <Toggle
+                checked={doubleIn}
+                onChange={setDoubleIn}
+                label="Double In Required"
+              />
             </div>
           </div>
         )}
@@ -401,33 +398,21 @@ const GameSetup: React.FC<GameSetupProps> = ({ onStartGame, loading, onOpenSetti
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeDoubles}
-                    onChange={(e) => setIncludeDoubles(e.target.checked)}
-                    className="w-5 h-5"
-                  />
-                  <span style={{ color: theme.text.primary }}>Include Doubles</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeTriples}
-                    onChange={(e) => setIncludeTriples(e.target.checked)}
-                    className="w-5 h-5"
-                  />
-                  <span style={{ color: theme.text.primary }}>Include Triples</span>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeBeds}
-                    onChange={(e) => setIncludeBeds(e.target.checked)}
-                    className="w-5 h-5"
-                  />
-                  <span style={{ color: theme.text.primary }}>Include Beds</span>
-                </label>
+                <Toggle
+                  checked={includeDoubles}
+                  onChange={setIncludeDoubles}
+                  label="Include Doubles"
+                />
+                <Toggle
+                  checked={includeTriples}
+                  onChange={setIncludeTriples}
+                  label="Include Triples"
+                />
+                <Toggle
+                  checked={includeBeds}
+                  onChange={setIncludeBeds}
+                  label="Include Beds"
+                />
               </div>
             </div>
           </div>
