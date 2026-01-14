@@ -17,9 +17,11 @@ namespace MyDarts.Api.Controllers
         private static readonly string DataDir = Path.Combine(AppContext.BaseDirectory, "data");
         private static readonly string TokensFile = Path.Combine(DataDir, "spotify_tokens.json");
         private static readonly string PreferredDeviceFile = Path.Combine(DataDir, "spotify_preferred_device.json");
+        private static readonly string ConfigFile = Path.Combine(DataDir, "spotify_config.json");
 
         // Static token storage (in production, use a proper cache/store)
         private static SpotifyTokens? _tokens;
+        private static SpotifyConfig? _config;
         private static readonly object _tokenLock = new();
 
         public SpotifyController(
@@ -32,16 +34,53 @@ namespace MyDarts.Api.Controllers
             _httpClientFactory = httpClientFactory;
             Directory.CreateDirectory(DataDir);
 
-            // Load tokens on first access
+            // Load config and tokens on first access
+            if (_config == null)
+            {
+                LoadConfig();
+            }
             if (_tokens == null)
             {
                 LoadTokens();
             }
         }
 
-        private string ClientId => _configuration["Spotify:ClientId"] ?? "";
-        private string ClientSecret => _configuration["Spotify:ClientSecret"] ?? "";
+        private string ClientId => _config?.ClientId ?? _configuration["Spotify:ClientId"] ?? "";
+        private string ClientSecret => _config?.ClientSecret ?? _configuration["Spotify:ClientSecret"] ?? "";
         private string RedirectUri => _configuration["Spotify:RedirectUri"] ?? "http://localhost:5025/api/spotify/callback";
+
+        private void LoadConfig()
+        {
+            if (System.IO.File.Exists(ConfigFile))
+            {
+                try
+                {
+                    var json = System.IO.File.ReadAllText(ConfigFile);
+                    _config = JsonSerializer.Deserialize<SpotifyConfig>(json);
+                    _logger.LogInformation("Loaded Spotify config from disk");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to load Spotify config");
+                }
+            }
+        }
+
+        private void SaveConfig()
+        {
+            if (_config != null)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(_config);
+                    System.IO.File.WriteAllText(ConfigFile, json);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to save Spotify config");
+                }
+            }
+        }
 
         private void LoadTokens()
         {
@@ -144,6 +183,43 @@ namespace MyDarts.Api.Controllers
                 authenticated,
                 hasTokens = _tokens != null && !string.IsNullOrEmpty(_tokens.RefreshToken)
             });
+        }
+
+        /// <summary>
+        /// Get Spotify configuration (client ID only, not secret)
+        /// </summary>
+        [HttpGet("config")]
+        public IActionResult GetConfig()
+        {
+            return Ok(new
+            {
+                clientId = ClientId,
+                hasSecret = !string.IsNullOrEmpty(ClientSecret),
+                redirectUri = RedirectUri
+            });
+        }
+
+        /// <summary>
+        /// Save Spotify configuration
+        /// </summary>
+        [HttpPost("config")]
+        public IActionResult SaveConfig([FromBody] SpotifyConfigRequest request)
+        {
+            _config = new SpotifyConfig
+            {
+                ClientId = request.ClientId ?? "",
+                ClientSecret = request.ClientSecret ?? ""
+            };
+            SaveConfig();
+
+            // Clear existing tokens since credentials changed
+            _tokens = null;
+            if (System.IO.File.Exists(TokensFile))
+            {
+                System.IO.File.Delete(TokensFile);
+            }
+
+            return Ok(new { success = true, message = "Configuration saved" });
         }
 
         /// <summary>
@@ -480,5 +556,17 @@ namespace MyDarts.Api.Controllers
     {
         public string? DeviceId { get; set; }
         public string? DeviceName { get; set; }
+    }
+
+    public class SpotifyConfig
+    {
+        public string ClientId { get; set; } = "";
+        public string ClientSecret { get; set; } = "";
+    }
+
+    public class SpotifyConfigRequest
+    {
+        public string? ClientId { get; set; }
+        public string? ClientSecret { get; set; }
     }
 }
