@@ -3,6 +3,8 @@ export { GameDefaultsSection } from './GameDefaultsSection';
 export { ThemeSection } from './ThemeSection';
 export { SoundSection } from './SoundSection';
 export { CamerasSection } from './CamerasSection';
+export { AutodartsSection } from './AutodartsSection';
+export { BoardManagerSection } from './BoardManagerSection';
 export { SystemSection } from './SystemSection';
 export { BluetoothSection } from './BluetoothSection';
 export { SpotifySection } from './SpotifySection';
