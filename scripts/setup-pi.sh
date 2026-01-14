@@ -6,14 +6,11 @@ set -e
 
 echo "=== MyDarts Pi Setup ==="
 
-# Check if running as pi user
-if [ "$USER" != "pi" ]; then
-    echo "Warning: Running as $USER, not pi. Service will be configured for pi user."
-fi
-
+CURRENT_USER="$USER"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+echo "Current user: $CURRENT_USER"
 echo "Project directory: $PROJECT_DIR"
 
 # Install dependencies
@@ -25,16 +22,21 @@ sudo apt-get install -y unclutter chromium-browser
 # Build the project
 echo ""
 echo "=== Building MyDarts ==="
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR/MyDarts.Api"
 dotnet build --configuration Release
 
-# Install systemd service
+# Install systemd service with correct user
 echo ""
 echo "=== Installing systemd service ==="
-sudo cp "$SCRIPT_DIR/mydarts.service" /etc/systemd/system/
+# Create temp service file with correct user and paths
+sed -e "s|User=pi|User=$CURRENT_USER|g" \
+    -e "s|/home/pi|$HOME|g" \
+    -e "s|ExecStart=/usr/bin/dotnet|ExecStart=$(which dotnet)|g" \
+    "$SCRIPT_DIR/mydarts.service" | sudo tee /etc/systemd/system/mydarts.service > /dev/null
+
 sudo systemctl daemon-reload
 sudo systemctl enable mydarts.service
-echo "Service installed and enabled"
+echo "Service installed and enabled for user: $CURRENT_USER"
 
 # Make kiosk script executable
 chmod +x "$SCRIPT_DIR/kiosk.sh"

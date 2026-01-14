@@ -14,9 +14,17 @@ cd "$PROJECT_DIR"
 echo "Pulling latest..."
 git pull
 
-# Rebuild
-echo "Building..."
+# Rebuild backend
+echo "Building backend..."
+cd MyDarts.Api
 dotnet build --configuration Release
+
+# Rebuild frontend
+echo "Building frontend..."
+cd ../my-darts-ui
+npm install
+npm run build
+cp -r build/* ../MyDarts.Api/wwwroot/
 
 # Restart service
 echo "Restarting service..."

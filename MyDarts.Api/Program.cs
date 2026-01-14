@@ -89,6 +89,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowReact");
 
+// Serve static files from wwwroot
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 // Map SignalR hub
 app.MapHub<GameHub>("/gamehub");
 
