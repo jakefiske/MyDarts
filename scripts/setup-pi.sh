@@ -17,7 +17,7 @@ echo "Project directory: $PROJECT_DIR"
 echo ""
 echo "=== Installing dependencies ==="
 sudo apt-get update
-sudo apt-get install -y unclutter chromium-browser
+sudo apt-get install -y unclutter chromium-browser python3-pip
 
 # Build the project
 echo ""
@@ -35,7 +35,7 @@ cp -r build/* "$PROJECT_DIR/MyDarts.Api/wwwroot/"
 
 # Install systemd service with correct user
 echo ""
-echo "=== Installing systemd service ==="
+echo "=== Installing MyDarts systemd service ==="
 # Create temp service file with correct user and paths
 sed -e "s|User=pi|User=$CURRENT_USER|g" \
     -e "s|/home/pi|$HOME|g" \
@@ -45,12 +45,20 @@ sed -e "s|User=pi|User=$CURRENT_USER|g" \
 sudo systemctl daemon-reload
 sudo systemctl enable mydarts.service
 sudo systemctl start mydarts.service
-echo "Service installed and enabled for user: $CURRENT_USER"
+echo "MyDarts service installed and enabled for user: $CURRENT_USER"
 
-# Install darts-caller service (if darts-caller is installed)
-if [ -f "$HOME/.local/bin/darts-caller" ]; then
+# Install darts-caller if directory exists
+if [ -d "$HOME/darts-caller" ]; then
     echo ""
-    echo "=== Installing darts-caller service ==="
+    echo "=== Setting up darts-caller ==="
+    
+    # Install Python dependencies
+    echo "Installing darts-caller Python dependencies..."
+    cd "$HOME/darts-caller"
+    pip install -r requirements.txt --break-system-packages
+    
+    # Install systemd service
+    echo "Installing darts-caller systemd service..."
     sed -e "s|User=pi|User=$CURRENT_USER|g" \
         -e "s|/home/pi|$HOME|g" \
         "$SCRIPT_DIR/darts-caller.service" | sudo tee /etc/systemd/system/darts-caller.service > /dev/null
@@ -58,15 +66,13 @@ if [ -f "$HOME/.local/bin/darts-caller" ]; then
     sudo systemctl daemon-reload
     sudo systemctl enable darts-caller.service
     sudo systemctl start darts-caller.service
-    echo "Darts-caller service installed and started"
+    echo "✓ Darts-caller service installed and started"
 else
     echo ""
     echo "=== Darts-caller not found ==="
-    echo "Darts-caller not installed at $HOME/.local/bin/darts-caller"
-    echo "Skipping darts-caller service installation"
-    echo ""
-    echo "To install darts-caller:"
-    echo "  npm install -g darts-caller"
+    echo "To install darts-caller, clone the repo:"
+    echo "  cd ~"
+    echo "  git clone https://github.com/lbormann/darts-caller.git"
     echo "Then re-run: ./scripts/setup-pi.sh"
 fi
 
@@ -74,6 +80,12 @@ echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "MyDarts API is now running on http://localhost:5025"
+echo ""
+echo "Services status:"
+echo "  MyDarts:       sudo systemctl status mydarts"
+if [ -d "$HOME/darts-caller" ]; then
+    echo "  Darts-caller:  sudo systemctl status darts-caller"
+fi
 echo ""
 echo "Commands:"
 echo "  View logs:         journalctl -u mydarts -f"
