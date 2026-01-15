@@ -33,7 +33,7 @@ function AppContent() {
     loading,
     startNewGame,
     confirmTurn,
-    throw: handleThrow,
+    handleThrow,
     resetGame,
     undoThrow,
     canUndo,
