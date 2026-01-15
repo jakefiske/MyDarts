@@ -70,15 +70,24 @@ export function useSignalR(gameId: string | null, handlers: SignalREventHandlers
       return;
     }
 
-    // Create connection
+    // Build connection
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(HUB_URL)
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (retryContext) => {
+          // Exponential backoff: 0s, 2s, 10s, 30s
+          if (retryContext.previousRetryCount === 0) return 0;
+          if (retryContext.previousRetryCount === 1) return 2000;
+          if (retryContext.previousRetryCount === 2) return 10000;
+          return 30000;
+        }
+      })
+      .configureLogging(signalR.LogLevel.Information)
       .build();
 
     connectionRef.current = connection;
 
+    // Connection state handlers
     connection.onreconnecting(() => {
       console.log('SignalR reconnecting...');
       setConnectionState(ConnectionState.Reconnecting);
@@ -87,7 +96,6 @@ export function useSignalR(gameId: string | null, handlers: SignalREventHandlers
     connection.onreconnected(() => {
       console.log('SignalR reconnected');
       setConnectionState(ConnectionState.Connected);
-      
       // Re-subscribe to game after reconnection
       connection.invoke('SubscribeToGame', gameId).catch(err => {
         console.error('Failed to re-subscribe to game:', err);
@@ -146,7 +154,10 @@ export function useSignalR(gameId: string | null, handlers: SignalREventHandlers
 
     // Cleanup
     return () => {
-      if (connection.state === signalR.HubConnectionState.Connected) {
+      if (connection) {
+        connection.invoke('UnsubscribeFromGame', gameId).catch(err => {
+          console.error('Failed to unsubscribe from game:', err);
+        });
         connection.stop().catch(err => {
           console.error('Error stopping SignalR connection:', err);
         });
@@ -154,10 +165,9 @@ export function useSignalR(gameId: string | null, handlers: SignalREventHandlers
     };
   }, [gameId]);
 
-  const isConnected = connectionState === ConnectionState.Connected;
-
   return {
     connectionState,
-    isConnected,
+    isConnected: connectionState === ConnectionState.Connected,
+    connection: connectionRef.current,
   };
 }
