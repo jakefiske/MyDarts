@@ -116,7 +116,7 @@ namespace MyDarts.Api.Services
                 if (data.TryGetProperty("event", out var eventProp))
                 {
                     var evt = eventProp.GetString() ?? "";
-                    
+
                     if (evt.Contains("-thrown") && evt.StartsWith("dart"))
                     {
                         // This is a dart throw event
@@ -127,11 +127,17 @@ namespace MyDarts.Api.Services
                             {
                                 var segment = fieldNum.ToString();
                                 var multiplier = fieldMult.GetInt32();
-                                
+
                                 _logger.LogInformation(">>> DART THROWN: {Segment} x{Multiplier}", segment, multiplier);
                                 ProcessThrow(segment, multiplier);
                             }
                         }
+                    }
+                    else if (evt == "darts-pulled")
+                    {
+                        // Darts were pulled out - send takeout event
+                        _logger.LogInformation(">>> DARTS PULLED - Broadcasting TakeoutDetected");
+                        _hubContext.Clients.All.SendAsync("TakeoutDetected");
                     }
                 }
 
@@ -151,7 +157,7 @@ namespace MyDarts.Api.Services
         private void ProcessThrow(string segment, int multiplier)
         {
             _logger.LogInformation(">>> Broadcasting throw to SignalR: {Segment} x{Multiplier}", segment, multiplier);
-            
+
             _hubContext.Clients.All.SendAsync("DartsCallerThrow", new
             {
                 segment,
@@ -166,10 +172,10 @@ namespace MyDarts.Api.Services
                     using var scope = _serviceProvider.CreateScope();
                     var sessionManager = scope.ServiceProvider.GetRequiredService<IGameSessionManager>();
                     var gameService = scope.ServiceProvider.GetRequiredService<IGameService>();
-                    
+
                     var games = sessionManager.GetActiveGames();
                     var latestGame = games.OrderByDescending(g => g.StartedAt).FirstOrDefault();
-                    
+
                     if (latestGame != null)
                     {
                         var dartThrow = CreateDartThrow(segment, multiplier);
@@ -219,7 +225,7 @@ namespace MyDarts.Api.Services
                 };
             }
 
-            _logger.LogInformation(">>> CreateDartThrow: segment={Segment}, multiplier={Multiplier}, value={Value}, display={Display}", 
+            _logger.LogInformation(">>> CreateDartThrow: segment={Segment}, multiplier={Multiplier}, value={Value}, display={Display}",
                 segment, multiplier, value, displaySegment);
 
             return new MyDarts.Api.Models.Requests.DartThrow
