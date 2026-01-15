@@ -1,35 +1,35 @@
 #!/bin/bash
-# Quick update script - pull latest and restart
-
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+echo "🎯 MyDarts Update Script"
+echo "========================"
+echo ""
 
-echo "=== Updating MyDarts ==="
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-cd "$PROJECT_DIR"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR/.."
 
-# Pull latest
-echo "Pulling latest..."
-git pull
-
-# Rebuild backend
-echo "Building backend..."
+echo -e "${BLUE}Building backend...${NC}"
 cd MyDarts.Api
-dotnet build --configuration Release
-
-# Rebuild frontend
-echo "Building frontend..."
-cd ../my-darts-ui
-npm install
-npm run build
-cp -r build/* ../MyDarts.Api/wwwroot/
-
-# Restart service
-echo "Restarting service..."
-sudo systemctl restart mydarts
+dotnet build -c Release
+cd ..
 
 echo ""
-echo "=== Update complete ==="
-echo "View logs: journalctl -u mydarts -f"
+echo -e "${BLUE}Building frontend...${NC}"
+cd my-darts-ui
+npm install
+npm run build
+cd ..
+
+echo ""
+echo -e "${BLUE}Restarting services...${NC}"
+sudo systemctl restart mydarts-api.service
+sudo systemctl restart mydarts-ui.service
+
+echo ""
+echo -e "${GREEN}✅ Update complete!${NC}"
+echo ""
+echo "Check status: sudo systemctl status mydarts-api"

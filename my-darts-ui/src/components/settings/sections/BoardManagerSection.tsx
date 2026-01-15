@@ -68,7 +68,7 @@ export const BoardManagerSection: React.FC = () => {
               type="text"
               value={boardManagerUrl}
               onChange={(e) => setBoardManagerUrl(e.target.value)}
-              placeholder="http://192.168.86.250:3180"
+              placeholder="http://localhost:3180"
               className="flex-1 px-3 py-2 rounded-lg"
               style={{ 
                 background: theme.backgrounds.baseHex, 

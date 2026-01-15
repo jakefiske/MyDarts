@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../hooks/useThemeContext';
 import { useThrowSource } from '../hooks/useThrowSource';
+import { getDefaultDartsCallerUrl } from '../config';
 
 interface AutodartsBridgeProps {}
 
@@ -8,9 +9,7 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
   const { theme } = useTheme();
   const [logs, setLogs] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [urlInput, setUrlInput] = useState(() => 
-    localStorage.getItem('dartscaller_url') || 'http://192.168.86.25:8079'
-  );
+  const [urlInput, setUrlInput] = useState(() => getDefaultDartsCallerUrl());
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -152,7 +151,7 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
               type="text"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="http://192.168.86.25:8079"
+              placeholder="http://localhost:8079"
               className="w-full px-3 py-2 rounded text-sm font-mono"
               style={{ 
                 background: theme.backgrounds.cardHex,
@@ -161,7 +160,7 @@ export const AutodartsBridge: React.FC<AutodartsBridgeProps> = () => {
               }}
             />
             <div className="text-xs mt-1" style={{ color: theme.text.muted }}>
-              URL of darts-caller running on your Pi (or localhost for testing)
+              Darts-caller runs on the same device as MyDarts (use localhost:8079)
             </div>
           </div>
 

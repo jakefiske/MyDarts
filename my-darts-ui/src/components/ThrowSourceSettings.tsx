@@ -129,7 +129,7 @@ export const ThrowSourceSettings: React.FC<ThrowSourceSettingsProps> = ({ classN
               type="text"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder={status?.dartsCallerUrl || "http://192.168.86.25:8079"}
+              placeholder={status?.dartsCallerUrl || "http://localhost:8079"}
               className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500"
             />
             <button
