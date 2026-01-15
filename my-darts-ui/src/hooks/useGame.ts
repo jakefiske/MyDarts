@@ -68,11 +68,10 @@ export function useGame(enableRealtime: boolean = true) {
   const refreshGame = useCallback(async (playSound: boolean = false) => {
     if (!game) return;
     try {
-      const oldGame = game; // Capture old state for sound comparison
+      const oldGame = game;
       const data = await api.getGame(game.gameId);
       console.log('Game refreshed:', data);
       if (data && data.currentTurnThrows) {
-        // Play sound if requested (for Autodarts throws via SignalR)
         if (playSound && data.currentTurnThrows.length > oldGame.currentTurnThrows.length) {
           playThrowSound(data, oldGame);
         }
@@ -86,49 +85,39 @@ export function useGame(enableRealtime: boolean = true) {
   // Confirm turn handler
   const handleConfirmTurn = useCallback(async (bedAllocation?: string, shanghaiAllocation?: string) => {
     if (!game) return;
-    if (game.turnComplete) return;
     
-    setLoading(true);
-    try {
-      console.log('=== handleConfirmTurn START ===', { bedAllocation, shanghaiAllocation });
-      
-      // Add current turn's throws to player's totals
-      const currentPlayer = game.players[game.currentPlayerIndex];
-      const totalThrows = game.throwsThisTurn;
-      const baseThrows = Math.min(totalThrows, 3);
-      const bonusThrows = Math.max(0, totalThrows - 3);
-      
-      setPlayerTotalThrows(prev => {
-        const existing = prev[currentPlayer.id] || { base: 0, bonus: 0 };
-        return {
-          ...prev,
-          [currentPlayer.id]: { 
-            base: existing.base + baseThrows, 
-            bonus: existing.bonus + bonusThrows 
-          }
-        };
-      });
-      
-      const data = await api.confirmTurn(game.gameId, bedAllocation, shanghaiAllocation);
-      
-      console.log('=== handleConfirmTurn COMPLETE ===', data);
-      
-      // ALWAYS update state immediately after confirmTurn completes
-      // This prevents race condition with SignalR TurnEndedEvent
-      setGame(data);
-      setEditingThrowIndex(null);
-    } catch (err) {
-      console.error('Failed to confirm turn:', err);
-    } finally {
-      setLoading(false);
-    }
+    console.log('=== handleConfirmTurn START ===', { bedAllocation, shanghaiAllocation });
+    
+    // Add current turn's throws to player's totals
+    const currentPlayer = game.players[game.currentPlayerIndex];
+    const totalThrows = game.throwsThisTurn;
+    const baseThrows = Math.min(totalThrows, 3);
+    const bonusThrows = Math.max(0, totalThrows - 3);
+    
+    setPlayerTotalThrows(prev => {
+      const existing = prev[currentPlayer.id] || { base: 0, bonus: 0 };
+      return {
+        ...prev,
+        [currentPlayer.id]: { 
+          base: existing.base + baseThrows, 
+          bonus: existing.bonus + bonusThrows 
+        }
+      };
+    });
+    
+    const data = await api.confirmTurn(game.gameId, bedAllocation, shanghaiAllocation);
+    
+    console.log('=== handleConfirmTurn COMPLETE ===', data);
+    
+    setGame(data);
+    setEditingThrowIndex(null);
   }, [game, api]);
 
   // SignalR event handlers
   const signalRHandlers = {
     onDartThrown: useCallback(() => {
       console.log('Dart thrown event - refreshing game state');
-      refreshGame(true); // Play sound for Autodarts throws
+      refreshGame(true);
     }, [refreshGame]),
     
     onGameWon: useCallback(() => {
@@ -154,7 +143,6 @@ export function useGame(enableRealtime: boolean = true) {
     }, [game, handleConfirmTurn]),
   };
 
-  // Connect to SignalR if enabled
   const { connectionState, isConnected } = useSignalR(
     enableRealtime && game ? game.gameId : null,
     signalRHandlers
@@ -169,7 +157,6 @@ export function useGame(enableRealtime: boolean = true) {
       setPlayerTotalThrows({});
       playGameStartSound();
       
-      // Auto-activate autodarts and bind to game
       try {
         await activateSource('autodarts');
         await bindToGame(data.gameId);
@@ -185,37 +172,24 @@ export function useGame(enableRealtime: boolean = true) {
   const handleThrow = async (segment: string, multiplier: number, value: number, allocationChoice?: string) => {
     if (!game || game.status === 2) return;
     
-    // If editing
     if (editingThrowIndex !== null) {
       const data = await api.editThrow(game.gameId, editingThrowIndex, { 
-        segment,
-        value, 
-        multiplier,
-        allocationChoice 
+        segment, value, multiplier, allocationChoice 
       });
       setGame(data);
       setEditingThrowIndex(null);
       return;
     }
 
-    // Block new throws when turn is complete
     if (game.turnComplete) return;
 
-    // Store old game state for sound comparison
     const oldGame = game;
-
-    // Normal throw
     const data = await api.submitThrow(game.gameId, { 
-      segment,
-      value, 
-      multiplier,
-      allocationChoice 
+      segment, value, multiplier, allocationChoice 
     });
     
-    // ALWAYS play sound immediately when throwing
     playThrowSound(data, oldGame);
     
-    // Only update state locally if NOT using SignalR (SignalR will broadcast the update)
     if (!enableRealtime || !isConnected) {
       setGame(data);
     }
@@ -226,11 +200,9 @@ export function useGame(enableRealtime: boolean = true) {
 
     const data = await api.undoThrow(game.gameId);
     
-    // ALWAYS update state (either from API or SignalR will refresh)
     if (!enableRealtime || !isConnected) {
       setGame(data);
     } else {
-      // Force refresh after undo when using SignalR
       setTimeout(() => refreshGame(), 100);
     }
     setEditingThrowIndex(null);
@@ -240,32 +212,31 @@ export function useGame(enableRealtime: boolean = true) {
     setGame(null);
     setEditingThrowIndex(null);
     setPlayerTotalThrows({});
-    
-    // Unbind throw source
     unbind().catch(() => {});
   };
 
-  const editThrow = (index: number) => {
-    setEditingThrowIndex(index);
-  };
-
-  const cancelEdit = () => {
-    setEditingThrowIndex(null);
-  };
-
   return {
+    // State
     game,
     loading,
-    connectionState,
-    isConnected,
     editingThrowIndex,
     playerTotalThrows,
+    
+    // SignalR state
+    connectionState,
+    isRealtimeConnected: isConnected,
+    
+    // Actions
     startNewGame,
-    throw: handleThrow,
+    handleThrow,
     confirmTurn: handleConfirmTurn,
     undoThrow: handleUndoThrow,
     resetGame,
-    editThrow,
-    cancelEdit,
+    setEditingThrowIndex,
+    
+    // Computed
+    displayThrows: game?.currentTurnThrows || [],
+    isGameOver: game?.status === 2,
+    canUndo: ((game?.currentTurnThrows?.length ?? 0) > 0) && game?.status !== 2,
   };
 }
