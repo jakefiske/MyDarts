@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -51,7 +51,14 @@ namespace MyDarts.Api.Controllers
 
         private string ClientId => _config?.ClientId ?? _configuration["Spotify:ClientId"] ?? "";
         private string ClientSecret => _config?.ClientSecret ?? _configuration["Spotify:ClientSecret"] ?? "";
-        private string RedirectUri => _configuration["Spotify:RedirectUri"] ?? "http://127.0.0.1:5025/api/spotify/callback";
+        
+        // Dynamic redirect URI based on request host
+        private string GetRedirectUri()
+        {
+            var scheme = Request.Scheme;
+            var host = Request.Host.ToString();
+            return $"{scheme}://{host}/api/spotify/callback";
+        }
 
         private void LoadConfig()
         {
@@ -199,7 +206,7 @@ namespace MyDarts.Api.Controllers
             {
                 clientId = ClientId,
                 hasSecret = !string.IsNullOrEmpty(ClientSecret),
-                redirectUri = RedirectUri
+                redirectUri = GetRedirectUri()
             });
         }
 
@@ -238,7 +245,8 @@ namespace MyDarts.Api.Controllers
             }
 
             var scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
-            var authUrl = $"https://accounts.spotify.com/authorize?client_id={ClientId}&response_type=code&redirect_uri={Uri.EscapeDataString(RedirectUri)}&scope={Uri.EscapeDataString(scopes)}";
+            var redirectUri = GetRedirectUri();
+            var authUrl = $"https://accounts.spotify.com/authorize?client_id={ClientId}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&scope={Uri.EscapeDataString(scopes)}";
 
             return Ok(new { authUrl });
         }
@@ -260,11 +268,12 @@ namespace MyDarts.Api.Controllers
                 var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{ClientId}:{ClientSecret}"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
 
+                var redirectUri = GetRedirectUri();
                 var content = new FormUrlEncodedContent(new[]
                 {
                     new KeyValuePair<string, string>("grant_type", "authorization_code"),
                     new KeyValuePair<string, string>("code", code),
-                    new KeyValuePair<string, string>("redirect_uri", RedirectUri)
+                    new KeyValuePair<string, string>("redirect_uri", redirectUri)
                 });
 
                 var response = await client.PostAsync("https://accounts.spotify.com/api/token", content);
@@ -283,9 +292,10 @@ namespace MyDarts.Api.Controllers
                         };
                         SaveTokens();
 
-                        // Redirect to frontend
-                        var frontendUrl = _configuration["Frontend:Url"] ?? "http://localhost:3000";
-                        return Redirect($"{frontendUrl}/settings?spotify=success");
+                        // Redirect to frontend on same host
+                        var scheme = Request.Scheme;
+                        var host = Request.Host.ToString();
+                        return Redirect($"{scheme}://{host}/settings?spotify=success");
                     }
                 }
 
@@ -326,28 +336,25 @@ namespace MyDarts.Api.Controllers
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _tokens!.AccessToken);
 
                 var response = await client.GetAsync("https://api.spotify.com/v1/me/player");
-
-                if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
-                    return Ok(new { isPlaying = false });
-
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync();
-                    var playback = JsonSerializer.Deserialize<JsonElement>(json);
-                    return Ok(playback);
+                    return Ok(JsonSerializer.Deserialize<JsonElement>(json));
                 }
 
-                return Ok(new { isPlaying = false });
+                if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                    return Ok(new { is_playing = false, item = (object?)null });
+
+                return Ok(new { is_playing = false, item = (object?)null });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to get playback");
-                return Ok(new { isPlaying = false, error = ex.Message });
+                return Ok(new { is_playing = false, error = ex.Message });
             }
         }
 
         /// <summary>
-        /// Play/resume playback
+        /// Resume playback
         /// </summary>
         [HttpPost("play")]
         public async Task<IActionResult> Play()
