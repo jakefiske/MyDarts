@@ -83,6 +83,47 @@ export function useGame(enableRealtime: boolean = true) {
     }
   }, [game, api]);
 
+  // Confirm turn handler
+  const handleConfirmTurn = useCallback(async (bedAllocation?: string, shanghaiAllocation?: string) => {
+    if (!game) return;
+    if (game.turnComplete) return;
+    
+    setLoading(true);
+    try {
+      console.log('=== handleConfirmTurn START ===', { bedAllocation, shanghaiAllocation });
+      
+      // Add current turn's throws to player's totals
+      const currentPlayer = game.players[game.currentPlayerIndex];
+      const totalThrows = game.throwsThisTurn;
+      const baseThrows = Math.min(totalThrows, 3);
+      const bonusThrows = Math.max(0, totalThrows - 3);
+      
+      setPlayerTotalThrows(prev => {
+        const existing = prev[currentPlayer.id] || { base: 0, bonus: 0 };
+        return {
+          ...prev,
+          [currentPlayer.id]: { 
+            base: existing.base + baseThrows, 
+            bonus: existing.bonus + bonusThrows 
+          }
+        };
+      });
+      
+      const data = await api.confirmTurn(game.gameId, bedAllocation, shanghaiAllocation);
+      
+      console.log('=== handleConfirmTurn COMPLETE ===', data);
+      
+      // ALWAYS update state immediately after confirmTurn completes
+      // This prevents race condition with SignalR TurnEndedEvent
+      setGame(data);
+      setEditingThrowIndex(null);
+    } catch (err) {
+      console.error('Failed to confirm turn:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [game, api]);
+
   // SignalR event handlers
   const signalRHandlers = {
     onDartThrown: useCallback(() => {
@@ -104,6 +145,13 @@ export function useGame(enableRealtime: boolean = true) {
       console.log('Turn ended event - refreshing game state');
       refreshGame();
     }, [refreshGame]),
+    
+    onTakeoutDetected: useCallback(() => {
+      console.log('Takeout detected - auto-confirming turn');
+      if (game && !game.turnComplete && game.throwsThisTurn > 0) {
+        handleConfirmTurn();
+      }
+    }, [game, handleConfirmTurn]),
   };
 
   // Connect to SignalR if enabled
@@ -173,38 +221,6 @@ export function useGame(enableRealtime: boolean = true) {
     }
   };
 
-  const handleConfirmTurn = async (bedAllocation?: string, shanghaiAllocation?: string) => {
-    if (!game) return;
-    
-    console.log('=== handleConfirmTurn START ===', { bedAllocation, shanghaiAllocation });
-    
-    // Add current turn's throws to player's totals
-    const currentPlayer = game.players[game.currentPlayerIndex];
-    const totalThrows = game.throwsThisTurn;
-    const baseThrows = Math.min(totalThrows, 3);
-    const bonusThrows = Math.max(0, totalThrows - 3);
-    
-    setPlayerTotalThrows(prev => {
-      const existing = prev[currentPlayer.id] || { base: 0, bonus: 0 };
-      return {
-        ...prev,
-        [currentPlayer.id]: { 
-          base: existing.base + baseThrows, 
-          bonus: existing.bonus + bonusThrows 
-        }
-      };
-    });
-    
-    const data = await api.confirmTurn(game.gameId, bedAllocation, shanghaiAllocation);
-    
-    console.log('=== handleConfirmTurn COMPLETE ===', data);
-    
-    // ALWAYS update state immediately after confirmTurn completes
-    // This prevents race condition with SignalR TurnEndedEvent
-    setGame(data);
-    setEditingThrowIndex(null);
-  };
-
   const handleUndoThrow = async () => {
     if (!game || game.currentTurnThrows.length === 0) return;
 
@@ -229,28 +245,27 @@ export function useGame(enableRealtime: boolean = true) {
     unbind().catch(() => {});
   };
 
+  const editThrow = (index: number) => {
+    setEditingThrowIndex(index);
+  };
+
+  const cancelEdit = () => {
+    setEditingThrowIndex(null);
+  };
+
   return {
-    // State
     game,
     loading,
+    connectionState,
+    isConnected,
     editingThrowIndex,
     playerTotalThrows,
-    
-    // SignalR state
-    connectionState,
-    isRealtimeConnected: isConnected,
-    
-    // Actions
     startNewGame,
-    handleThrow,
+    throw: handleThrow,
     confirmTurn: handleConfirmTurn,
     undoThrow: handleUndoThrow,
     resetGame,
-    setEditingThrowIndex,
-    
-    // Computed
-    displayThrows: game?.currentTurnThrows || [],
-    isGameOver: game?.status === 2,
-    canUndo: ((game?.currentTurnThrows?.length ?? 0) > 0) && game?.status !== 2,
+    editThrow,
+    cancelEdit,
   };
 }
