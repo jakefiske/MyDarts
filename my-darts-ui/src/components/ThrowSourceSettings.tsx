@@ -112,7 +112,31 @@ export const ThrowSourceSettings: React.FC<ThrowSourceSettingsProps> = ({ classN
             )}
             
             {source.sourceId === 'opencv' && (
-              <span className="text-sm text-gray-500">Coming soon</span>
+              <div className="flex items-center gap-2">
+                {!source.isAvailable && (
+                  <span className="text-sm text-yellow-500 mr-2">
+                    ⚠️ Requires calibration
+                  </span>
+                )}
+                {!source.isActive && (
+                  <>
+                    <a
+                      href="/settings/calibration"
+                      className="text-sm px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+                    >
+                      Calibrate Cameras
+                    </a>
+                    <button
+                      onClick={() => handleActivate(source.sourceId)}
+                      disabled={isLoading || !source.isAvailable}
+                      title={!source.isAvailable ? "Calibrate cameras first" : ""}
+                      className="text-sm px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50"
+                    >
+                      Connect
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
         ))}

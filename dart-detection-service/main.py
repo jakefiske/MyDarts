@@ -11,6 +11,8 @@ from typing import Optional
 
 from detection.dart_detector import DartDetector
 from detection.camera_manager import CameraManager
+from detection.click_calibrator import ClickCalibrator
+from detection.triangle_detector import TriangleDartDetector
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,8 @@ app.add_middleware(
 # Global detector instance
 detector: Optional[DartDetector] = None
 camera_manager: Optional[CameraManager] = None
+calibrator: Optional[ClickCalibrator] = None
+triangle_detector: Optional[TriangleDartDetector] = None
 
 # WebSocket connections
 active_connections: list[WebSocket] = []
@@ -47,8 +51,10 @@ class CalibrationRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize camera manager on startup"""
-    global camera_manager
+    global camera_manager, calibrator, triangle_detector
     camera_manager = CameraManager()
+    calibrator = ClickCalibrator(target_size=(800, 800))
+    triangle_detector = TriangleDartDetector()
     logger.info("Detection service started")
 
 
@@ -98,7 +104,9 @@ async def start_detection(request: StartRequest):
             camera_indices=request.camera_indices,
             resolution=request.resolution,
             on_dart_detected=broadcast_dart_detected,
-            on_takeout_detected=broadcast_takeout_detected
+            on_takeout_detected=broadcast_takeout_detected,
+            calibrator=calibrator,
+            triangle_detector=triangle_detector
         )
         
         # Start detection in background
@@ -180,6 +188,151 @@ async def list_cameras():
             for idx in available
         ]
     }
+
+
+class CalibrationPoints(BaseModel):
+    """Calibration points from user clicks"""
+    center_x: int
+    center_y: int
+    top_x: int
+    top_y: int
+    right_x: int
+    right_y: int
+
+
+@app.get("/calibrate/{camera_id}/snapshot")
+async def get_camera_snapshot(camera_id: int):
+    """Get a snapshot from camera for calibration UI"""
+    import cv2
+    import base64
+    
+    try:
+        cap = cv2.VideoCapture(camera_id)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return {"error": f"Could not capture from camera {camera_id}"}, 400
+        
+        # Encode as JPEG
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return {
+            "camera_id": camera_id,
+            "image": img_base64,
+            "width": frame.shape[1],
+            "height": frame.shape[0]
+        }
+    except Exception as e:
+        logger.error(f"Snapshot failed: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.post("/calibrate/{camera_id}")
+async def calibrate_camera(camera_id: int, points: CalibrationPoints):
+    """
+    Calibrate camera using clicked points.
+    
+    User clicks 3 points:
+    1. Bullseye center
+    2. Outer double ring at 12 o'clock (top)
+    3. Outer double ring at 3 o'clock (right)
+    """
+    if not calibrator:
+        return {"error": "Calibrator not initialized"}, 500
+    
+    try:
+        result = calibrator.calibrate_with_clicks(
+            camera_id,
+            points.center_x,
+            points.center_y,
+            points.top_x,
+            points.top_y,
+            points.right_x,
+            points.right_y
+        )
+        
+        if result.success:
+            return {
+                "status": "calibrated",
+                "message": result.message,
+                "camera_id": camera_id
+            }
+        else:
+            return {"status": "failed", "message": result.message}, 400
+    except Exception as e:
+        logger.error(f"Calibration failed: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.get("/calibrate/{camera_id}/preview")
+async def preview_calibration(camera_id: int):
+    """Preview calibrated view with board overlay"""
+    import cv2
+    import base64
+    
+    if not calibrator or not calibrator.is_calibrated(camera_id):
+        return {"error": f"Camera {camera_id} not calibrated"}, 400
+    
+    try:
+        cap = cv2.VideoCapture(camera_id)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return {"error": f"Could not capture from camera {camera_id}"}, 400
+        
+        # Transform and overlay
+        transformed = calibrator.transform_frame(frame, camera_id)
+        if transformed is None:
+            return {"error": "Could not transform frame"}, 400
+        
+        with_overlay = calibrator.draw_board_overlay(transformed, camera_id)
+        
+        _, buffer = cv2.imencode('.jpg', with_overlay, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return {
+            "camera_id": camera_id,
+            "width": 800,
+            "height": 800,
+            "image": img_base64,
+            "is_calibrated": True
+        }
+    except Exception as e:
+        logger.error(f"Preview failed: {e}")
+        return {"error": str(e)}, 500
+
+
+@app.get("/calibrate/status")
+async def calibration_status():
+    """Get calibration status"""
+    if not calibrator:
+        return {"calibrated_cameras": []}
+    
+    calibrated = []
+    for cam_id in range(3):
+        if calibrator.is_calibrated(cam_id):
+            calibrated.append({"camera_id": cam_id})
+    
+    return {"calibrated_cameras": calibrated}
+
+
+@app.delete("/calibrate/{camera_id}")
+async def clear_calibration(camera_id: int):
+    """Clear calibration for camera"""
+    if not calibrator:
+        return {"error": "Calibrator not initialized"}, 500
+    
+    calibrator.clear_calibration(camera_id)
+    return {"status": "cleared", "camera_id": camera_id}
 
 
 @app.websocket("/events")

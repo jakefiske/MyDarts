@@ -35,6 +35,9 @@ export interface Theme {
     bust: { gradient: string; border: string };
     info: { gradient: string; border: string };
     streak: { gradient: string; border: string };
+    error: { color: string; gradient: string; border: string };
+    success: { color: string; gradient: string; border: string };
+    warning: { color: string; gradient: string; border: string };
   };
   borders: {
     primary: string;
@@ -96,6 +99,9 @@ export const proDarkTheme: Theme = {
     bust: { gradient: 'from-red-600/90 to-red-500/90', border: '#EF4444' },
     info: { gradient: 'from-blue-600/90 to-blue-500/90', border: '#3B82F6' },
     streak: { gradient: 'from-orange-600/90 to-red-600/90', border: '#FB923C' },
+    error: { color: '#EF4444', gradient: 'from-red-600/90 to-red-500/90', border: '#EF4444' },
+    success: { color: '#00E676', gradient: 'from-green-500/90 to-emerald-500/90', border: '#00E676' },
+    warning: { color: '#FFA000', gradient: 'from-orange-600/90 to-yellow-500/90', border: '#FFA000' },
   },
   borders: {
     primary: '#334155',
@@ -157,6 +163,9 @@ export const broadcastTheme: Theme = {
     bust: { gradient: 'from-red-500 to-pink-500', border: '#FF0099' },
     info: { gradient: 'from-cyan-500 to-blue-500', border: '#00FFFF' },
     streak: { gradient: 'from-orange-500 to-yellow-500', border: '#FFFF00' },
+    error: { color: '#FF3333', gradient: 'from-red-500 to-pink-500', border: '#FF3333' },
+    success: { color: '#00FF85', gradient: 'from-green-400 to-lime-400', border: '#00FF85' },
+    warning: { color: '#FFB800', gradient: 'from-orange-500 to-yellow-500', border: '#FFB800' },
   },
   borders: {
     primary: '#7C3AED',
@@ -218,6 +227,9 @@ export const lightTheme: Theme = {
     bust: { gradient: 'from-red-500 to-red-600', border: '#DC2626' },
     info: { gradient: 'from-blue-500 to-blue-600', border: '#2563EB' },
     streak: { gradient: 'from-purple-500 to-purple-600', border: '#7C3AED' },
+    error: { color: '#DC2626', gradient: 'from-red-500 to-red-600', border: '#DC2626' },
+    success: { color: '#059669', gradient: 'from-green-600 to-green-500', border: '#059669' },
+    warning: { color: '#D97706', gradient: 'from-yellow-500 to-orange-500', border: '#D97706' },
   },
   borders: {
     primary: '#E5E7EB', // gray-200

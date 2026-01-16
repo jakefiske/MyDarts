@@ -1,6 +1,6 @@
 """
 Dart Detector
-Core detection logic using background subtraction and multi-camera triangulation.
+Core detection logic using triangle fitting and multi-camera fusion.
 """
 import cv2
 import numpy as np
@@ -10,15 +10,17 @@ from typing import Callable, Optional
 from datetime import datetime
 
 from .camera_manager import CameraManager
-from .score_mapper import ScoreMapper
+from .click_calibrator import ClickCalibrator
+from .triangle_detector import TriangleDartDetector
+from .multi_camera_fusion import MultiCameraFusion, CameraDetection
+from .score_calculator import ScoreCalculator
 
 logger = logging.getLogger(__name__)
 
 
 class DartDetector:
     """
-    Detects dart throws using OpenCV and multiple cameras.
-    Uses background subtraction to detect when darts land.
+    Detects dart throws using OpenCV, triangle fitting, and multiple cameras.
     """
     
     def __init__(
@@ -26,7 +28,9 @@ class DartDetector:
         camera_indices: list[int],
         resolution: tuple[int, int] = (640, 480),
         on_dart_detected: Optional[Callable] = None,
-        on_takeout_detected: Optional[Callable] = None
+        on_takeout_detected: Optional[Callable] = None,
+        calibrator: Optional[ClickCalibrator] = None,
+        triangle_detector: Optional[TriangleDartDetector] = None
     ):
         self.camera_indices = camera_indices
         self.resolution = resolution
@@ -38,33 +42,27 @@ class DartDetector:
         self.is_calibrated = False
         self.cameras: dict[int, cv2.VideoCapture] = {}
         self.reference_frames: dict[int, np.ndarray] = {}
-        self.dart_count = 0  # Track darts in current turn (1, 2, 3)
+        self.dart_count = 0
         
-        # Camera manager
+        # Components
         self.camera_manager = CameraManager()
+        self.calibrator = calibrator
+        self.triangle_detector = triangle_detector or TriangleDartDetector()
+        self.camera_fusion = MultiCameraFusion(sample_frames=20)
+        self.score_calculators: dict[int, ScoreCalculator] = {}
         
-        # Score mapper (board coordinates to scores)
-        self.score_mapper: Optional[ScoreMapper] = None
+        # Setup score calculators from calibration
+        if self.calibrator:
+            for cam_id in camera_indices:
+                if self.calibrator.is_calibrated(cam_id):
+                    center = self.calibrator.get_board_center(cam_id)
+                    radii = self.calibrator.get_ring_radii(cam_id)
+                    self.score_calculators[cam_id] = ScoreCalculator(center, radii)
+                    self.is_calibrated = True
         
         # Detection parameters
-        self.detection_threshold = 500  # Minimum pixel difference to detect dart
-        self.min_dart_area = 200  # Minimum contour area for dart
-        self.max_dart_area = 5000  # Maximum contour area
-        
-        # Takeout detection
         self.frames_since_last_dart = 0
-        self.takeout_threshold = 30  # Frames to wait before detecting takeout
-    
-    def set_calibration(self, calibration_points: list[dict]):
-        """
-        Set board calibration from calibration points.
-        
-        Args:
-            calibration_points: List of board marker positions
-        """
-        logger.info(f"Setting calibration with {len(calibration_points)} points")
-        self.score_mapper = ScoreMapper(calibration_points)
-        self.is_calibrated = True
+        self.takeout_threshold = 30
     
     def capture_reference(self):
         """Capture reference frames (board with no darts)"""
@@ -72,19 +70,19 @@ class DartDetector:
         
         for cam_idx in self.camera_indices:
             if cam_idx not in self.cameras:
-                logger.error(f"Camera {cam_idx} not available")
                 continue
             
             ret, frame = self.cameras[cam_idx].read()
             if ret:
-                # Convert to grayscale for comparison
+                # Transform if calibrated
+                if self.calibrator and self.calibrator.is_calibrated(cam_idx):
+                    frame = self.calibrator.transform_frame(frame, cam_idx)
+                
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                # Apply Gaussian blur to reduce noise
                 blurred = cv2.GaussianBlur(gray, (5, 5), 0)
                 self.reference_frames[cam_idx] = blurred
                 logger.info(f"Reference captured for camera {cam_idx}")
         
-        # Reset dart count when taking new reference
         self.dart_count = 0
     
     async def start(self):
@@ -103,13 +101,9 @@ class DartDetector:
             
             logger.info(f"Opened {len(self.cameras)} cameras")
             
-            # Give cameras time to warm up
             await asyncio.sleep(1)
-            
-            # Capture initial reference
             self.capture_reference()
             
-            # Start detection loop
             await self._detection_loop()
             
         except Exception as e:
@@ -122,7 +116,6 @@ class DartDetector:
         logger.info("Stopping dart detection...")
         self.is_running = False
         
-        # Release cameras
         for cam_idx in list(self.cameras.keys()):
             self.camera_manager.release_camera(cam_idx)
         
@@ -135,7 +128,6 @@ class DartDetector:
         
         while self.is_running:
             try:
-                # Check all cameras for darts
                 detected = await self._check_for_darts()
                 
                 if detected:
@@ -143,11 +135,9 @@ class DartDetector:
                 else:
                     self.frames_since_last_dart += 1
                 
-                # Detect takeout (darts pulled) after enough frames with no change
                 if self.dart_count > 0 and self.frames_since_last_dart > self.takeout_threshold:
                     await self._handle_takeout()
                 
-                # Small delay to control frame rate
                 await asyncio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
@@ -155,10 +145,7 @@ class DartDetector:
                 await asyncio.sleep(1)
     
     async def _check_for_darts(self) -> bool:
-        """
-        Check all cameras for dart detection.
-        Returns True if a dart was detected.
-        """
+        """Check all cameras for dart detection"""
         detections = []
         
         for cam_idx in self.camera_indices:
@@ -169,104 +156,84 @@ class DartDetector:
             if not ret:
                 continue
             
-            # Convert to grayscale
+            # Transform if calibrated
+            if self.calibrator and self.calibrator.is_calibrated(cam_idx):
+                frame = self.calibrator.transform_frame(frame, cam_idx)
+            
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
             
-            # Calculate difference from reference
+            # Calculate difference
             diff = cv2.absdiff(self.reference_frames[cam_idx], blurred)
             
-            # Threshold the difference
-            _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+            # Detect dart tips using triangle fitting
+            dart_detections = self.triangle_detector.detect_dart(diff, top_n=1)
             
-            # Find contours
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            # Check for dart-sized contours
-            for contour in contours:
-                area = cv2.contourArea(contour)
+            if dart_detections:
+                best_dart = dart_detections[0]
                 
-                if self.min_dart_area < area < self.max_dart_area:
-                    # Found potential dart
-                    M = cv2.moments(contour)
-                    if M["m00"] > 0:
-                        cx = int(M["m10"] / M["m00"])
-                        cy = int(M["m01"] / M["m00"])
-                        
-                        detections.append({
-                            'camera': cam_idx,
-                            'x': cx,
-                            'y': cy,
-                            'area': area,
-                            'confidence': min(1.0, area / 1000)  # Simple confidence based on area
-                        })
+                # Calculate score if calibrated
+                if cam_idx in self.score_calculators:
+                    score_result = self.score_calculators[cam_idx].calculate_score(
+                        best_dart.tip_x,
+                        best_dart.tip_y
+                    )
+                    
+                    detections.append(CameraDetection(
+                        camera_id=cam_idx,
+                        segment=score_result.segment,
+                        value=score_result.value,
+                        multiplier=score_result.multiplier,
+                        confidence=best_dart.confidence,
+                        x=best_dart.tip_x,
+                        y=best_dart.tip_y
+                    ))
         
-        # If we have detections from multiple cameras, triangulate position
-        if len(detections) >= 1:  # Start with single camera, improve later
-            await self._process_detections(detections)
-            return True
+        # Fuse detections from all cameras
+        if detections:
+            self.camera_fusion.add_detections(detections)
+            
+            # Check if we have enough samples
+            if self.camera_fusion.get_buffer_size() >= 10:
+                fused = self.camera_fusion.get_fused_detection()
+                
+                if fused and fused.agreement >= 0.5:
+                    await self._process_fused_detection(fused)
+                    self.camera_fusion.reset_buffer()
+                    return True
         
         return False
     
-    async def _process_detections(self, detections: list[dict]):
-        """
-        Process dart detections from cameras and determine score.
-        """
-        # For now, use the detection with highest confidence
-        best_detection = max(detections, key=lambda d: d['confidence'])
-        
-        # Increment dart count
+    async def _process_fused_detection(self, fused):
+        """Process fused detection from multiple cameras"""
         self.dart_count += 1
         if self.dart_count > 3:
-            self.dart_count = 1  # Reset if somehow we got more than 3
+            self.dart_count = 1
         
-        # Map to dartboard coordinates
-        if self.score_mapper and self.is_calibrated:
-            score_data = self.score_mapper.pixel_to_score(
-                best_detection['x'],
-                best_detection['y'],
-                best_detection['camera']
-            )
-        else:
-            # No calibration - return dummy data for testing
-            logger.warning("No calibration - returning test data")
-            score_data = {
-                'segment': 'T20',
-                'value': 20,
-                'multiplier': 3
-            }
-        
-        # Build event data
         event = {
-            'segment': score_data['segment'],
-            'value': score_data['value'],
-            'multiplier': score_data['multiplier'],
+            'segment': fused.segment,
+            'value': fused.value,
+            'multiplier': fused.multiplier,
             'dart_number': self.dart_count,
-            'confidence': best_detection['confidence'],
+            'confidence': fused.confidence,
             'timestamp': datetime.utcnow().isoformat()
         }
         
-        logger.info(f"Dart {self.dart_count} detected: {event['segment']} (confidence: {event['confidence']:.2f})")
+        logger.info(f"Dart {self.dart_count} detected: {event['segment']} (conf: {fused.confidence:.2f}, agreement: {fused.agreement:.2f})")
         
-        # Fire callback
         if self.on_dart_detected:
             await self.on_dart_detected(event)
         
-        # Update reference to include this dart
-        # (So we only detect NEW darts, not the same one repeatedly)
+        # Update reference
         self.capture_reference()
     
     async def _handle_takeout(self):
-        """Handle takeout detection (darts removed from board)"""
-        logger.info("Takeout detected - darts pulled")
+        """Handle takeout detection"""
+        logger.info("Takeout detected")
         
-        # Fire callback
         if self.on_takeout_detected:
             await self.on_takeout_detected()
         
-        # Reset dart count
         self.dart_count = 0
-        
-        # Capture new reference (empty board)
-        await asyncio.sleep(0.5)  # Wait for darts to be fully removed
+        await asyncio.sleep(0.5)
         self.capture_reference()
