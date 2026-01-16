@@ -3,3 +3,8 @@ bin/
 obj/
 node_modules/
 *.user
+MyDarts.Api/wwwroot/
+dart-detection-service/detection/__pycache__/
+dart-detection-service/venv/
+my-darts-ui/udo systemctl status mydarts
+scripts/kiosk.sh.save
